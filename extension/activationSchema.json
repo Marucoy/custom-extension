@@ -1,0 +1,133 @@
+{
+  "$schema": "https://artifactory.lab.dynatrace.org/artifactory/configuration-core-release/com/dynatrace/configuration/configuration-core-schema/0.419.0.20220620152643/configuration-core-schema-0.419.0.20220620152643.jar!/1/schema_strict_static.json",
+  "types": {
+    "pythonRemote": {
+      "displayName": "MongoDB Atlas Connection Event Monitor",
+      "type": "object",
+      "properties": {
+        "public_key": {
+          "displayName": "Atlas Public Key",
+          "description": "MongoDB Atlas API public key",
+          "type": "text",
+          "nullable": false,
+          "default": "",
+          "constraints": [
+            {
+              "type": "LENGTH",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          ],
+          "maxItems": 1
+        },
+        "private_key": {
+          "displayName": "Atlas Private Key",
+          "description": "MongoDB Atlas API private key",
+          "type": "secret",
+          "nullable": false,
+          "default": "",
+          "constraints": [
+            {
+              "type": "LENGTH",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          ],
+          "maxItems": 1
+        },
+        "group_id": {
+          "displayName": "Group ID",
+          "description": "MongoDB Atlas Project/Group ID",
+          "type": "text",
+          "nullable": false,
+          "default": "",
+          "constraints": [
+            {
+              "type": "LENGTH",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          ],
+          "maxItems": 1
+        },
+        "cluster_name": {
+          "displayName": "Cluster Name",
+          "description": "Name of the MongoDB Atlas cluster",
+          "type": "text",
+          "nullable": false,
+          "default": "mongodb-atlas",
+          "constraints": [
+            {
+              "type": "LENGTH",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          ],
+          "maxItems": 1
+        },
+        "hours_ago": {
+          "displayName": "Log Collection Period (hours)",
+          "description": "How many hours of logs to collect",
+          "type": "integer",
+          "nullable": false,
+          "default": 4,
+          "maxItems": 1,
+          "constraints": [
+            {
+              "type": "RANGE",
+              "minimum": 1,
+              "maximum": 24
+            }
+          ]
+        },
+        "minutes_window": {
+          "displayName": "Metrics Window (minutes)",
+          "description": "Number of complete minutes to process",
+          "type": "integer",
+          "nullable": false,
+          "default": 6,
+          "maxItems": 1,
+          "constraints": [
+            {
+              "type": "RANGE",
+              "minimum": 1,
+              "maximum": 60
+            }
+          ]
+        },
+        "execution_interval_minutes": {
+          "displayName": "Execution Interval (minutes)",
+          "description": "How often to collect metrics",
+          "type": "integer",
+          "nullable": false,
+          "default": 5,
+          "maxItems": 1,
+          "constraints": [
+            {
+              "type": "RANGE",
+              "minimum": 1,
+              "maximum": 60
+            }
+          ]
+        }
+      }
+    }
+  },
+  "dynatrace": "1",
+  "description": "MongoDB Atlas Connection Monitor configuration",
+  "schemaId": "python-extension.activation",
+  "displayName": "MongoDB Atlas Connection Event Monitor",
+  "ownerProductManagement": "Paula Pereira",
+  "ownerDevelopment": "Yamana",
+  "maturity": "GENERAL_AVAILABILITY",
+  "allowedScopes": ["tenant"],
+  "multiObject": false,
+  "properties": {
+    "pythonRemote": {
+      "displayName": "MongoDB Atlas Configuration",
+      "type": {
+        "$ref": "#/types/pythonRemote"
+      }
+    }
+  }
+}

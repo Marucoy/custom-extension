@@ -1,0 +1,92 @@
+name: custom:mongodb.atlas.connection
+version: 0.0.18
+minDynatraceVersion: "1.310"
+author:
+  name: Yamana
+
+metrics:
+  # Authentication Success Metrics
+  - key: mongodb.atlas.auth.success.count
+    metadata:
+      displayName: MongoDB Atlas - Authentication Success Count
+      description: Number of successful authentication events
+      unit: Count
+      sourceEntityType: mongodb_atlas:cluster
+  
+  - key: mongodb.atlas.auth.success.duration_micros
+    metadata:
+      displayName: MongoDB Atlas - Authentication Success Duration
+      description: Duration of successful authentication in microseconds
+      unit: MicroSecond
+      sourceEntityType: mongodb_atlas:cluster
+
+  # Authentication Failed Metrics
+  - key: mongodb.atlas.auth.failed.count
+    metadata:
+      displayName: MongoDB Atlas - Authentication Failed Count
+      description: Number of failed authentication events
+      unit: Count
+      sourceEntityType: mongodb_atlas:cluster
+  
+  - key: mongodb.atlas.auth.failed.duration_micros
+    metadata:
+      displayName: MongoDB Atlas - Authentication Failed Duration
+      description: Duration of failed authentication in microseconds
+      unit: MicroSecond
+      sourceEntityType: mongodb_atlas:cluster
+
+  # Connection Metrics
+  - key: mongodb.atlas.connection.accepted.count
+    metadata:
+      displayName: MongoDB Atlas - Connection Accepted Count
+      description: Number of connections accepted
+      unit: Count
+      sourceEntityType: mongodb_atlas:cluster
+  
+  - key: mongodb.atlas.connection.ended.count
+    metadata:
+      displayName: MongoDB Atlas - Connection Ended Count
+      description: Number of connections ended
+      unit: Count
+      sourceEntityType: mongodb_atlas:cluster
+
+topology:
+  types:
+    - name: mongodb_atlas:cluster
+      displayName: MongoDB Atlas Cluster
+      enabled: true
+      rules:
+        - idPattern: mongodb_atlas_cluster_{cluster}_{group_id}
+          sources:
+            - sourceType: Metrics
+              condition: $prefix(mongodb.atlas)
+          requiredDimensions:
+            - key: cluster
+            - key: group_id
+          attributes:
+            - key: cluster_name
+              displayName: Cluster Name
+              pattern: "{cluster}"
+            - key: group_id
+              displayName: Group ID
+              pattern: "{group_id}"
+            
+python:
+  runtime:
+    module: mongodb_atlas_extension
+    version:
+      min: "3.10"
+  featureSets:
+    - featureSet: connection-monitoring
+      metrics:
+        - key: mongodb.atlas.connection.accepted.count
+        - key: mongodb.atlas.connection.ended.count
+    - featureSet: connection-auth
+      metrics:
+        - key: mongodb.atlas.auth.success.count
+        - key: mongodb.atlas.auth.success.duration_micros
+        - key: mongodb.atlas.auth.failed.count
+        - key: mongodb.atlas.auth.failed.duration_micros
+  activation:
+    remote:
+      path: activationSchema.json

@@ -1,0 +1,65 @@
+![MongoDB Atlas Connection Event Extension](icon.png)
+
+# extension_mongo_atlas extension
+
+## Building and signing
+
+* `dt-sdk build .`
+
+## Running
+
+* `dt-sdk run`
+
+## Developing
+
+1. Clone this repository
+2. Install dependencies with `pip install .`
+3. Increase the version under `extension/extension.yaml` after modifications
+4. Run `dt-sdk build`
+
+## Structure
+
+### extension_mongo_atlas folder
+
+Contains the python code for the extension
+
+### extension folder
+
+Contains the yaml and activation definitions for the framework v2 extension
+
+### setup.py
+
+Contains dependency and other python metadata
+
+### activation.json
+
+Used during simulation only, contains the activation definition for the extension
+
+# Core dependencies
+requests>=2.31.0
+
+# Dynatrace Extension SDK
+dt-extensions-sdk>=1.0.0
+
+# Development dependencies (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+flake8>=6.1.0
+mypy>=1.5.0
+
+
+
+# MongoDB Atlas Connection Monitor
+
+This extension collects and displays MongoDB Atlas authentication and connection metrics.
+
+## Metrics included
+- Authentication success/failure counts
+- Connection accepted and ended counts
+- Duration metrics in microseconds
+
+## Configuration
+Provide your Atlas API public and private keys, group ID, and cluster name in the activation schema.
+
+---

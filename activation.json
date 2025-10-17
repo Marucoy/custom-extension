@@ -1,0 +1,9 @@
+{
+  "public_key": "foowbuoj",
+  "private_key": "d5bef5eb-e37f-4565-b0b7-330689d0c6b9",
+  "group_id": "67bf53a9cc3d7b3cc86ab20b",
+  "cluster_name": "clarobr-mongoprd-nfcomiti-saeast1",
+  "hours_ago": 4,
+  "minutes_window": 6,
+  "execution_interval_minutes": 5
+}
