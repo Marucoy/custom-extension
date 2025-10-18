@@ -7,6 +7,7 @@ import requests
 from requests.auth import HTTPDigestAuth
 import gzip
 import json
+import re
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dynatrace_extension import Extension, Status, StatusValue
@@ -17,14 +18,14 @@ class MongoDBAtlasExtension(Extension):
     
     def initialize(self):
         """Initialize extension with configuration"""
+        import os
         
-        # Usar .get() DIRETAMENTE como o fornecedor faz - SEM FALLBACK
+        # Primeiro: tentar via activation_config (produção)
         self.public_key = str(self.activation_config.get("public_key") or "").strip()
         self.private_key = str(self.activation_config.get("private_key") or "").strip()
         self.group_id = str(self.activation_config.get("group_id") or "").strip()
         self.cluster_name = str(self.activation_config.get("cluster_name") or "mongodb-atlas").strip()
         
-        # Conversão explícita para int com valores padrão
         hours_ago_val = self.activation_config.get("hours_ago")
         self.hours_ago = int(hours_ago_val) if hours_ago_val is not None else 4
         
@@ -34,11 +35,44 @@ class MongoDBAtlasExtension(Extension):
         execution_interval_val = self.activation_config.get("execution_interval_minutes")
         self.execution_interval_minutes = int(execution_interval_val) if execution_interval_val is not None else 5
         
+        # Fallback: se public_key estiver vazio, tentar arquivo local com secrets
+        if not self.public_key:
+            self.logger.info("Config not found via activation_config, trying local files...")
+            
+            config = self._load_local_config_with_secrets()
+            
+            if config:
+                self.public_key = str(config.get("public_key") or "").strip()
+                self.private_key = str(config.get("private_key") or "").strip()
+                self.group_id = str(config.get("group_id") or "").strip()
+                self.cluster_name = str(config.get("cluster_name") or "clarobr-mongoprd-nfcomiti-saeast1").strip()
+                
+                try:
+                    self.hours_ago = int(config.get("hours_ago", 4))
+                except (TypeError, ValueError):
+                    self.hours_ago = 4
+                
+                try:
+                    self.minutes_window = int(config.get("minutes_window", 6))
+                except (TypeError, ValueError):
+                    self.minutes_window = 6
+                
+                try:
+                    self.execution_interval_minutes = int(config.get("execution_interval_minutes", 5))
+                except (TypeError, ValueError):
+                    self.execution_interval_minutes = 5
+                
+                self.logger.info("Configuration loaded from local files with secrets")
+        
         self.logger.info(f"Configuration loaded - Cluster: {self.cluster_name}, Group: {self.group_id}")
         
         # Validate required fields
         if not self.public_key:
-            raise ValueError("public_key is required in configuration")
+            raise ValueError(
+                "public_key is required. "
+                "In production: configure via Dynatrace UI. "
+                "For local testing: create activation.json and secrets.json"
+            )
         if not self.private_key:
             raise ValueError("private_key is required in configuration")
         if not self.group_id:
@@ -56,6 +90,56 @@ class MongoDBAtlasExtension(Extension):
         }
         
         self.logger.info(f"MongoDB Atlas Extension initialized for cluster: {self.cluster_name}")
+    
+    def _load_local_config_with_secrets(self):
+        """Load activation.json and substitute secrets from secrets.json"""
+        import os
+        
+        possible_paths = [
+            ('activation.json', 'secrets.json'),
+            (os.path.join(os.getcwd(), 'activation.json'), os.path.join(os.getcwd(), 'secrets.json')),
+            (os.path.join(os.path.dirname(__file__), 'activation.json'), os.path.join(os.path.dirname(__file__), 'secrets.json')),
+        ]
+        
+        for activation_path, secrets_path in possible_paths:
+            if os.path.exists(activation_path):
+                self.logger.info(f"Found activation.json at: {activation_path}")
+                try:
+                    # Ler activation.json
+                    with open(activation_path, 'r') as f:
+                        activation_content = f.read()
+                    
+                    # Ler secrets.json se existir
+                    secrets = {}
+                    if os.path.exists(secrets_path):
+                        self.logger.info(f"Found secrets.json at: {secrets_path}")
+                        with open(secrets_path, 'r') as f:
+                            secrets = json.load(f)
+                    
+                    # Substituir {{key}} pelos valores de secrets
+                    def replace_secret(match):
+                        key = match.group(1)
+                        if key in secrets:
+                            return secrets[key]
+                        else:
+                            self.logger.warning(f"Secret key '{key}' not found in secrets.json")
+                            return match.group(0)  # Retorna o original se não encontrar
+                    
+                    # Substituir todos os {{key}} no conteúdo
+                    substituted_content = re.sub(r'\{\{([^}]+)\}\}', replace_secret, activation_content)
+                    
+                    # Parse JSON depois da substituição
+                    config = json.loads(substituted_content)
+                    
+                    self.logger.info(f"Config loaded and secrets substituted. Keys: {list(config.keys())}")
+                    return config
+                    
+                except Exception as e:
+                    self.logger.error(f"Error loading config: {e}")
+                    return None
+        
+        self.logger.error("No activation.json found")
+        return None
     
     def query(self):
         """Método query() - Chama collect_metrics()"""
@@ -80,6 +164,9 @@ class MongoDBAtlasExtension(Extension):
                 
                 if logs:
                     events = self._parse_connection_logs(logs)
+                    # ADICIONAR hostname a cada evento para usar como dimensão "node"
+                    for event in events:
+                        event['node'] = hostname
                     self.logger.info(f"Found {len(events)} events from {hostname}")
                     all_events.extend(events)
             
@@ -274,12 +361,14 @@ class MongoDBAtlasExtension(Extension):
                 mechanism = attr.get('mechanism', 'unknown')
                 user = self._safe_str(attr.get('user', 'unknown'))
                 micros = attr.get('metrics', {}).get('conversation_duration', {}).get('micros', 0)
+                node = evt.get('node', 'unknown')
                 
                 auth_dimensions = {
                     "client_ip": client_ip,
                     "database": db,
                     "mechanism": mechanism,
                     "user": user,
+                    "node": node,
                     "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
@@ -297,6 +386,7 @@ class MongoDBAtlasExtension(Extension):
                     "database": "none",
                     "mechanism": "none",
                     "user": "none",
+                    "node": "none",
                     "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
@@ -312,12 +402,14 @@ class MongoDBAtlasExtension(Extension):
                     mechanism = attr.get('mechanism', 'unknown')
                     user = self._safe_str(attr.get('user', 'unknown'))
                     micros = attr.get('metrics', {}).get('conversation_duration', {}).get('micros', 0)
+                    node = evt.get('node', 'unknown')
                     
                     auth_fail_dimensions = {
                         "client_ip": client_ip,
                         "database": db,
                         "mechanism": mechanism,
                         "user": user,
+                        "node": node,
                         "timestamp": timestamp_epoch,
                         **self.base_dimensions
                     }
@@ -335,6 +427,7 @@ class MongoDBAtlasExtension(Extension):
                 connection_id = attr.get('connectionId', 'unknown')
                 is_load_balanced = str(attr.get('isLoadBalanced', False))
                 remote_ip = self._extract_ip_without_port(attr.get('remote', 'unknown'))
+                node = evt.get('node', 'unknown')
                 
                 uuid_val = attr.get('uuid', {})
                 if isinstance(uuid_val, dict) and 'uuid' in uuid_val:
@@ -347,6 +440,7 @@ class MongoDBAtlasExtension(Extension):
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
                     "uuid": uuid_str,
+                    "node": node,
                     "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
@@ -363,6 +457,7 @@ class MongoDBAtlasExtension(Extension):
                 connection_id = attr.get('connectionId', 'unknown')
                 is_load_balanced = str(attr.get('isLoadBalanced', False))
                 remote_ip = self._extract_ip_without_port(attr.get('remote', 'unknown'))
+                node = evt.get('node', 'unknown')
                 
                 uuid_val = attr.get('uuid', {})
                 if isinstance(uuid_val, dict) and 'uuid' in uuid_val:
@@ -375,6 +470,7 @@ class MongoDBAtlasExtension(Extension):
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
                     "uuid": uuid_str,
+                    "node": node,
                     "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }

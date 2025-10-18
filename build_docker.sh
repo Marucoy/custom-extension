@@ -2,7 +2,7 @@
 set -e
 
 # Definir nova versão
-NEW_VERSION="0.0.18"
+NEW_VERSION="0.0.21"
 
 echo "🐳 Building Dynatrace Extension v${NEW_VERSION} para x86_64 Linux via Docker..."
 echo ""

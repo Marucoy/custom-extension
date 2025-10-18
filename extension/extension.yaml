@@ -1,5 +1,5 @@
 name: custom:mongodb.atlas.connection
-version: 0.0.18
+version: 0.0.21
 minDynatraceVersion: "1.310"
 author:
   name: Yamana
@@ -52,6 +52,7 @@ metrics:
 
 topology:
   types:
+    # CLUSTER (DEPLOYMENT)
     - name: mongodb_atlas:cluster
       displayName: MongoDB Atlas Cluster
       enabled: true
@@ -63,6 +64,8 @@ topology:
           requiredDimensions:
             - key: cluster
             - key: group_id
+            - key: dt.extension.name
+              valuePattern: $eq(custom:mongodb.atlas.connection)
           attributes:
             - key: cluster_name
               displayName: Cluster Name
@@ -70,6 +73,46 @@ topology:
             - key: group_id
               displayName: Group ID
               pattern: "{group_id}"
+    # PROCESS (Node / Host)
+    - enabled: true
+      name: mongodb_atlas:node
+      displayName: MongoDB Atlas Node
+      rules:
+        - idPattern: mongodb_atlas_cluster_{cluster}_{host_name}
+          instanceNamePattern: "{host_name}"
+          iconPattern: mongo-db
+          sources:
+            - sourceType: Metrics
+              condition: $prefix(mongodb.atlas)
+          requiredDimensions:
+            - key: host_name
+            - key: dt.extension.name
+              valuePattern: $eq(custom:mongodb.atlas.connection)
+          attributes:
+            - key: host_name
+              pattern: "{host_name}"
+              displayName: host_name
+            - key: user_alias
+              pattern: "{user_alias}"
+              displayName: user_alias
+            - key: port
+              pattern: "{port}"
+              displayName: port
+            - key: version
+              pattern: "{version}"
+              displayName: version
+            - key: type
+              pattern: "{type}"
+              displayName: type
+            - key: replica_set_name
+              pattern: "{replica_set_name}"
+              displayName: replica_set_name
+            - key: cluster_id
+              pattern: "{cluster_id}"
+              displayName: cluster_id
+            - key: cluster_name
+              pattern: "{cluster_name}"
+              displayName: cluster_name
             
 python:
   runtime:

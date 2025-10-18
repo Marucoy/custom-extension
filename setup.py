@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mongodb-atlas-extension',
-    version='0.0.18',
+    version='0.0.21',
     description='Dynatrace Extension for MongoDB Atlas Connection Monitoring',
     author='Yamana',
     author_email='marco.yamana.terceiros@claro.com.br',
