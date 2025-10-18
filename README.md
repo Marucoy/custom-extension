@@ -55,7 +55,7 @@ When activating the extension, provide the following parameters:
 | Component | Description |
 |------------|-------------|
 | **Runtime** | Python 3.10+ |
-| **SDK** | Dynatrace Extensions SDK 1.0+ |
+| **SDK** | Dynatrace Extensions SDK 2.0+ |
 | **Source module** | `mongodb_atlas_extension` |
 | **Activation schema** | `activationSchema.json` |
 
