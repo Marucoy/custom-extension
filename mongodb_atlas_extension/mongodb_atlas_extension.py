@@ -8,6 +8,7 @@ from requests.auth import HTTPDigestAuth
 import gzip
 import json
 import re
+import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from dynatrace_extension import Extension, Status, StatusValue
@@ -45,7 +46,7 @@ class MongoDBAtlasExtension(Extension):
                 self.public_key = str(config.get("public_key") or "").strip()
                 self.private_key = str(config.get("private_key") or "").strip()
                 self.group_id = str(config.get("group_id") or "").strip()
-                self.cluster_name = str(config.get("cluster_name") or "clarobr-mongoprd-nfcomiti-saeast1").strip()
+                self.cluster_name = str(config.get("cluster_name") or "mongodb-atlas").strip()
                 
                 try:
                     self.hours_ago = int(config.get("hours_ago", 4))
@@ -65,6 +66,7 @@ class MongoDBAtlasExtension(Extension):
                 self.logger.info("Configuration loaded from local files with secrets")
         
         self.logger.info(f"Configuration loaded - Cluster: {self.cluster_name}, Group: {self.group_id}")
+        self.logger.info(f"Execution interval: {self.execution_interval_minutes} minutes")
         
         # Validate required fields
         if not self.public_key:
@@ -90,6 +92,10 @@ class MongoDBAtlasExtension(Extension):
         }
         
         self.logger.info(f"MongoDB Atlas Extension initialized for cluster: {self.cluster_name}")
+        
+        # Agendar execução periódica
+        self.schedule(self.mongodb_query, timedelta(minutes=self.execution_interval_minutes))
+        self.logger.info(f"Scheduled execution every {self.execution_interval_minutes} minutes")
     
     def _load_local_config_with_secrets(self):
         """Load activation.json and substitute secrets from secrets.json"""
@@ -123,7 +129,7 @@ class MongoDBAtlasExtension(Extension):
                             return secrets[key]
                         else:
                             self.logger.warning(f"Secret key '{key}' not found in secrets.json")
-                            return match.group(0)  # Retorna o original se não encontrar
+                            return match.group(0)
                     
                     # Substituir todos os {{key}} no conteúdo
                     substituted_content = re.sub(r'\{\{([^}]+)\}\}', replace_secret, activation_content)
@@ -142,45 +148,71 @@ class MongoDBAtlasExtension(Extension):
         return None
     
     def query(self):
-        """Método query() - Chama collect_metrics()"""
-        return self.collect_metrics()
+        """Método query() - NÃO FAZ NADA, pois usamos self.schedule()"""
+        return Status(StatusValue.OK)
     
-    def collect_metrics(self):
-        """Coleta métricas do MongoDB Atlas"""
+    def mongodb_query(self):
+        """Método agendado - Coleta métricas do MongoDB Atlas"""
         try:
+            start_total = time.time()
+            self.logger.info("="*60)
+            self.logger.info("Starting scheduled metrics collection")
+            self.logger.info("="*60)
+            
+            # Get processes
             processes = self._get_processes()
+            
             if not processes:
                 self.logger.warning("No processes found")
-                return Status(StatusValue.OK)
+                return
             
+            self.logger.info(f"Found {len(processes)} processes to collect from")
+            
+            # Collect logs from all nodes
             all_events = []
-            for process in processes:
+            
+            for idx, process in enumerate(processes, 1):
                 hostname = process.get('hostname')
                 if not hostname:
                     continue
                 
-                self.logger.info(f"Collecting logs from: {hostname}")
+                self.logger.info(f"[{idx}/{len(processes)}] Collecting logs from: {hostname}")
+                
                 logs = self._get_process_logs(hostname)
                 
                 if logs:
                     events = self._parse_connection_logs(logs)
-                    # ADICIONAR hostname a cada evento para usar como dimensão "node"
+                    
+                    # Add node dimension
                     for event in events:
                         event['node'] = hostname
-                    self.logger.info(f"Found {len(events)} events from {hostname}")
+                    
+                    self.logger.info(f"  Found {len(events)} events from {hostname}")
                     all_events.extend(events)
+            
+            # Event type breakdown
+            event_types = defaultdict(int)
+            for event in all_events:
+                event_type = event.get('event_type', 'unknown')
+                event_types[event_type] += 1
+            
+            self.logger.info("Event breakdown:")
+            for event_type, count in sorted(event_types.items()):
+                self.logger.info(f"  - {event_type}: {count}")
             
             if not all_events:
                 self.logger.warning("No events found in logs")
-                return Status(StatusValue.OK)
+                return
             
+            # Process and send metrics
             self._process_and_send_metrics(all_events)
             
-            return Status(StatusValue.OK)
+            elapsed_total = time.time() - start_total
+            self.logger.info(f"Total execution time: {elapsed_total:.2f}s")
+            self.logger.info("="*60)
             
         except Exception as e:
-            self.logger.error(f"Error in query: {str(e)}", exc_info=True)
-            return Status(StatusValue.GENERIC_ERROR, f"Query failed: {str(e)}")
+            self.logger.error(f"Error in mongodb_query: {str(e)}", exc_info=True)
     
     def _get_processes(self):
         """Get list of MongoDB processes"""
@@ -300,6 +332,7 @@ class MongoDBAtlasExtension(Extension):
     def _process_and_send_metrics(self, connections):
         """Process events and send metrics to Dynatrace"""
         
+        # Extract timestamps
         timestamps = []
         for evento in connections:
             ts_str = evento.get('t', {}).get('$date')
@@ -320,6 +353,7 @@ class MongoDBAtlasExtension(Extension):
         
         self.logger.info(f"Processing window: {primeiro_minuto} to {ultimo_minuto_completo}")
         
+        # Group events by minute
         eventos_por_minuto = defaultdict(lambda: defaultdict(list))
         
         for evento in connections:
@@ -345,12 +379,12 @@ class MongoDBAtlasExtension(Extension):
             minutos_range.append(current)
             current += timedelta(minutes=1)
         
-        metrics_count = 0
+        # Metrics counter
+        metrics_sent = 0
         
         for minuto in sorted(minutos_range):
-            timestamp_epoch = int(minuto.timestamp())
             
-            # Successfully authenticated
+            # Authentication Success
             auth_ok_eventos = eventos_por_minuto[minuto].get("Successfully authenticated", [])
             
             for evt in auth_ok_eventos:
@@ -369,15 +403,14 @@ class MongoDBAtlasExtension(Extension):
                     "mechanism": mechanism,
                     "user": user,
                     "node": node,
-                    "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
                 
-                self.report_metric("mongodb.atlas.auth.success.count", 1, auth_dimensions)
-                self.report_metric("mongodb.atlas.auth.success.duration_micros", micros, auth_dimensions)
-                metrics_count += 2
+                self.report_metric("mongodb.atlas.auth.success.count", 1, auth_dimensions, timestamp=minuto)
+                self.report_metric("mongodb.atlas.auth.success.duration_micros", micros, auth_dimensions, timestamp=minuto)
+                metrics_sent += 2
             
-            # Authentication failed
+            # Authentication Failed
             auth_fail_eventos = eventos_por_minuto[minuto].get("Authentication failed", [])
             
             if not auth_fail_eventos:
@@ -387,12 +420,11 @@ class MongoDBAtlasExtension(Extension):
                     "mechanism": "none",
                     "user": "none",
                     "node": "none",
-                    "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
                 
-                self.report_metric("mongodb.atlas.auth.failed.count", 0, auth_fail_base_dimensions)
-                metrics_count += 1
+                self.report_metric("mongodb.atlas.auth.failed.count", 0, auth_fail_base_dimensions, timestamp=minuto)
+                metrics_sent += 1
             else:
                 for evt in auth_fail_eventos:
                     attr = evt.get('attr', {})
@@ -410,21 +442,19 @@ class MongoDBAtlasExtension(Extension):
                         "mechanism": mechanism,
                         "user": user,
                         "node": node,
-                        "timestamp": timestamp_epoch,
                         **self.base_dimensions
                     }
                     
-                    self.report_metric("mongodb.atlas.auth.failed.count", 1, auth_fail_dimensions)
-                    self.report_metric("mongodb.atlas.auth.failed.duration_micros", micros, auth_fail_dimensions)
-                    metrics_count += 2
+                    self.report_metric("mongodb.atlas.auth.failed.count", 1, auth_fail_dimensions, timestamp=minuto)
+                    self.report_metric("mongodb.atlas.auth.failed.duration_micros", micros, auth_fail_dimensions, timestamp=minuto)
+                    metrics_sent += 2
             
-            # Connection accepted
+            # Connection Accepted
             conn_accept_eventos = eventos_por_minuto[minuto].get("Connection accepted", [])
             
             for evt in conn_accept_eventos:
                 attr = evt.get('attr', {})
                 
-                connection_id = attr.get('connectionId', 'unknown')
                 is_load_balanced = str(attr.get('isLoadBalanced', False))
                 remote_ip = self._extract_ip_without_port(attr.get('remote', 'unknown'))
                 node = evt.get('node', 'unknown')
@@ -436,25 +466,22 @@ class MongoDBAtlasExtension(Extension):
                     uuid_str = self._safe_str(uuid_val)
                 
                 conn_accept_dimensions = {
-                    "connection_id": str(connection_id),
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
                     "uuid": uuid_str,
                     "node": node,
-                    "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
                 
-                self.report_metric("mongodb.atlas.connection.accepted.count", 1, conn_accept_dimensions)
-                metrics_count += 1
+                self.report_metric("mongodb.atlas.conn.accepted.count", 1, conn_accept_dimensions, timestamp=minuto)
+                metrics_sent += 1
             
-            # Connection ended
+            # Connection Ended
             conn_end_eventos = eventos_por_minuto[minuto].get("Connection ended", [])
             
             for evt in conn_end_eventos:
                 attr = evt.get('attr', {})
                 
-                connection_id = attr.get('connectionId', 'unknown')
                 is_load_balanced = str(attr.get('isLoadBalanced', False))
                 remote_ip = self._extract_ip_without_port(attr.get('remote', 'unknown'))
                 node = evt.get('node', 'unknown')
@@ -466,19 +493,17 @@ class MongoDBAtlasExtension(Extension):
                     uuid_str = self._safe_str(uuid_val)
                 
                 conn_end_dimensions = {
-                    "connection_id": str(connection_id),
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
                     "uuid": uuid_str,
                     "node": node,
-                    "timestamp": timestamp_epoch,
                     **self.base_dimensions
                 }
                 
-                self.report_metric("mongodb.atlas.connection.ended.count", 1, conn_end_dimensions)
-                metrics_count += 1
+                self.report_metric("mongodb.atlas.conn.ended.count", 1, conn_end_dimensions, timestamp=minuto)
+                metrics_sent += 1
         
-        self.logger.info(f"Sent {metrics_count} metrics to Dynatrace")
+        self.logger.info(f"Metrics sent to Dynatrace: {metrics_sent}")
 
 
 def main():

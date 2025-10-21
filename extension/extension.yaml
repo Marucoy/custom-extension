@@ -1,5 +1,5 @@
 name: custom:mongodb.atlas.connection
-version: 0.0.21
+version: 0.1.0
 minDynatraceVersion: "1.310"
 author:
   name: Yamana
@@ -36,17 +36,17 @@ metrics:
       sourceEntityType: mongodb_atlas:cluster
 
   # Connection Metrics
-  - key: mongodb.atlas.connection.accepted.count
+  - key: mongodb.atlas.conn.accepted.count
     metadata:
       displayName: MongoDB Atlas - Connection Accepted Count
-      description: Number of connections accepted
+      description: Number of connections accepted by the cluster
       unit: Count
       sourceEntityType: mongodb_atlas:cluster
   
-  - key: mongodb.atlas.connection.ended.count
+  - key: mongodb.atlas.conn.ended.count
     metadata:
       displayName: MongoDB Atlas - Connection Ended Count
-      description: Number of connections ended
+      description: Number of connections ended by the cluster
       unit: Count
       sourceEntityType: mongodb_atlas:cluster
 
@@ -73,46 +73,25 @@ topology:
             - key: group_id
               displayName: Group ID
               pattern: "{group_id}"
-    # PROCESS (Node / Host)
-    - enabled: true
-      name: mongodb_atlas:node
+    # NODE
+    - name: mongodb_atlas:node
       displayName: MongoDB Atlas Node
+      enabled: true
       rules:
-        - idPattern: mongodb_atlas_cluster_{cluster}_{host_name}
-          instanceNamePattern: "{host_name}"
-          iconPattern: mongo-db
+        - idPattern: mongodb_atlas_node_{cluster}_{node}
+          instanceNamePattern: "{node}"
           sources:
             - sourceType: Metrics
               condition: $prefix(mongodb.atlas)
           requiredDimensions:
-            - key: host_name
+            - key: cluster
+            - key: node
             - key: dt.extension.name
               valuePattern: $eq(custom:mongodb.atlas.connection)
           attributes:
-            - key: host_name
-              pattern: "{host_name}"
-              displayName: host_name
-            - key: user_alias
-              pattern: "{user_alias}"
-              displayName: user_alias
-            - key: port
-              pattern: "{port}"
-              displayName: port
-            - key: version
-              pattern: "{version}"
-              displayName: version
-            - key: type
-              pattern: "{type}"
-              displayName: type
-            - key: replica_set_name
-              pattern: "{replica_set_name}"
-              displayName: replica_set_name
-            - key: cluster_id
-              pattern: "{cluster_id}"
-              displayName: cluster_id
-            - key: cluster_name
-              pattern: "{cluster_name}"
-              displayName: cluster_name
+            - key: node
+              displayName: Node Hostname
+              pattern: "{node}"
             
 python:
   runtime:
@@ -122,8 +101,8 @@ python:
   featureSets:
     - featureSet: connection-monitoring
       metrics:
-        - key: mongodb.atlas.connection.accepted.count
-        - key: mongodb.atlas.connection.ended.count
+        - key: mongodb.atlas.conn.accepted.count
+        - key: mongodb.atlas.conn.ended.count
     - featureSet: connection-auth
       metrics:
         - key: mongodb.atlas.auth.success.count
