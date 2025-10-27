@@ -468,7 +468,7 @@ class MongoDBAtlasExtension(Extension):
                 conn_accept_dimensions = {
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
-                    "uuid": uuid_str,
+#                    "uuid": uuid_str,
                     "node": node,
                     **self.base_dimensions
                 }
@@ -495,7 +495,7 @@ class MongoDBAtlasExtension(Extension):
                 conn_end_dimensions = {
                     "is_load_balanced": is_load_balanced,
                     "remote_ip": remote_ip,
-                    "uuid": uuid_str,
+#                    "uuid": uuid_str,
                     "node": node,
                     **self.base_dimensions
                 }

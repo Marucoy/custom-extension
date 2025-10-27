@@ -1,5 +1,5 @@
 name: custom:mongodb.atlas.connection
-version: 0.1.0
+version: 0.1.1
 minDynatraceVersion: "1.310"
 author:
   name: Yamana
